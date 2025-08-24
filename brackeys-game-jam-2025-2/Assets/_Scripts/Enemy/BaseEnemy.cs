@@ -5,31 +5,56 @@ public enum EnemyStatType
     Speed,
     Strength,
     Health,
-    CurrentHealth
+    CurrentHealth,
+    AttackSpeed,
+    AggroRange,
+    AttackRange
 }
 
-public abstract class BaseEnemy : MonoBehaviour
+public abstract class BaseEnemy : MonoBehaviour, IDamageable
 {
     [SerializeField] EnemyStatSO enemyStat;
 
+    public float Health { get => health; set => health = value; }
+
     // Runtime stats, copied from EnemyStatSO
-    protected int speed;
-    protected int strength;
-    protected int health;
-    protected int currentHealth;
+    protected float moveSpeed;
+    protected float strength;
+    protected float health;
+    protected float attackSpeed;
+    protected float aggroRange;
+    protected float attackRange;
+
+    protected float currentHealth;
 
     protected Rigidbody2D rb;
+    protected GameObject player;
 
     private void Awake()
     {
         // Copy values from ScriptableObject to runtime fields
-        speed = enemyStat.speed;
+        moveSpeed = enemyStat.moveSpeed;
         strength = enemyStat.strength;
         health = enemyStat.health;
+        attackSpeed = enemyStat.attackSpeed;
+        aggroRange = enemyStat.aggroRange;
+        attackRange = enemyStat.attackRange;
+
 
         currentHealth = health;
 
         rb = GetComponent<Rigidbody2D>();
+
+        player = GameObject.FindWithTag("Player");
+    }
+
+    public void Damage(float amount)
+    {
+        health -= amount;
+        if (health <= 0)
+        {
+            Die();
+        }
     }
 
     public abstract void Attack();
@@ -43,7 +68,7 @@ public abstract class BaseEnemy : MonoBehaviour
         switch (statType)
         {
             case EnemyStatType.Speed:
-                speed = value;
+                moveSpeed = value;
                 break;
             case EnemyStatType.Strength:
                 strength = value;
@@ -54,16 +79,25 @@ public abstract class BaseEnemy : MonoBehaviour
             case EnemyStatType.CurrentHealth:
                 currentHealth = value;
                 break;
+            case EnemyStatType.AttackSpeed:
+                attackSpeed = value;
+                break;
+            case EnemyStatType.AggroRange:
+                aggroRange = value;
+                break;
+            case EnemyStatType.AttackRange:
+                attackRange = value;
+                break;
         }
     }
 
     // Add flat value
-    public void AddToStat(EnemyStatType statType, int value)
+    public void ModifyStatFlat(EnemyStatType statType, int value)
     {
         switch (statType)
         {
             case EnemyStatType.Speed:
-                speed += value;
+                moveSpeed += value;
                 break;
             case EnemyStatType.Strength:
                 strength += value;
@@ -74,13 +108,16 @@ public abstract class BaseEnemy : MonoBehaviour
             case EnemyStatType.CurrentHealth:
                 currentHealth += value;
                 break;
+            case EnemyStatType.AttackSpeed:
+                attackSpeed += value;
+                break;
+            case EnemyStatType.AggroRange:
+                aggroRange += value;
+                break;
+            case EnemyStatType.AttackRange:
+                attackRange += value;
+                break;
         }
-    }
-
-    // Subtract flat value
-    public void SubtractFromStat(EnemyStatType statType, int value)
-    {
-        AddToStat(statType, -value);
     }
 
     // Modify by percent (positive to increase, negative to decrease)
@@ -89,7 +126,7 @@ public abstract class BaseEnemy : MonoBehaviour
         switch (statType)
         {
             case EnemyStatType.Speed:
-                speed = Mathf.RoundToInt(speed * (1f + percent));
+                moveSpeed = Mathf.RoundToInt(moveSpeed * (1f + percent));
                 break;
             case EnemyStatType.Strength:
                 strength = Mathf.RoundToInt(strength * (1f + percent));
@@ -99,6 +136,15 @@ public abstract class BaseEnemy : MonoBehaviour
                 break;
             case EnemyStatType.CurrentHealth:
                 currentHealth = Mathf.RoundToInt(currentHealth * (1f + percent));
+                break;
+            case EnemyStatType.AttackSpeed:
+                attackSpeed = Mathf.RoundToInt(attackSpeed * (1f + percent));
+                break;
+            case EnemyStatType.AggroRange:
+                aggroRange = Mathf.RoundToInt(aggroRange * (1f + percent));
+                break;
+            case EnemyStatType.AttackRange:
+                attackRange = Mathf.RoundToInt(attackRange * (1f + percent));
                 break;
         }
     }
