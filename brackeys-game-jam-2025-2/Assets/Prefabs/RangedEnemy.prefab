@@ -102,6 +102,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   enemyStat: {fileID: 11400000, guid: c9569f73a97c0a44cb64e42f4a6eef10, type: 2}
+  aggroLossTime: 5
+  wallTag: Obstacle
+  raycastDistance: 1
+  raycastCount: 5
+  wallAvoidanceForce: 2
   projectilePrefab: {fileID: 1067192479704684274, guid: 24959d50ef012254ca3774d2478c4abd, type: 3}
 --- !u!61 &7063114187389241868
 BoxCollider2D:
