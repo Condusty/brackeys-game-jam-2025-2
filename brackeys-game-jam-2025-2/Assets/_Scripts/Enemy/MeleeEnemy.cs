@@ -1,16 +1,14 @@
-using Unity.VisualScripting;
 using UnityEngine;
 
-public class RangedEnemy : BaseEnemy
+public class MeleeEnemy : BaseEnemy
 {
-    [SerializeField] GameObject projectilePrefab;
     [SerializeField] private float aggroLossTime = 5f; // Zeit bis Aggro verloren geht
     [SerializeField] private string wallTag = "Obstacle"; // Tag für Wände
 
     private bool isMoving = false;
     private bool isInAttackRange = false;
     private bool isAggro = false;
-    private float attackCd = 2;
+    private float attackCd = 1.5f;
     private float aggroTimer = 0f;
     private Vector2 lastKnownPlayerPosition;
 
@@ -73,39 +71,47 @@ public class RangedEnemy : BaseEnemy
             // Wenn es ein Obstacle ist, blockiert es die Sicht
             if (hit.collider.CompareTag(wallTag))
             {
+                Debug.Log($"Wall detected: {hit.collider.name} blocks vision");
                 return false;
             }
             
             // Wenn wir den Spieler erreichen, ohne eine Wand zu treffen
             if (hit.collider.CompareTag("Player"))
             {
+                Debug.Log("Player reached without wall obstruction");
                 return true;
             }
         }
         
         // Fallback: Wenn kein Player-Hit gefunden wurde
+        Debug.Log("No player hit found in raycast");
         return false;
     }
 
     private void CheckAttackCd()
     {
         attackCd -= Time.deltaTime;
-        if(attackCd <= 0 && isInAttackRange && CanSeePlayer())
+        if (attackCd <= 0 && isInAttackRange && CanSeePlayer())
         {
             Attack();
-            attackCd = 2;
+            attackCd = 1.5f;
         }
     }
 
     public override void Attack()
     {
-        Instantiate(projectilePrefab, transform.position, Quaternion.identity);
-        Debug.Log("Ranged Enemy Attacks!");
+        Debug.Log("Melee Enemy Attacks!");
+        var playerDamageable = player.GetComponent<IDamageable>();
+        if (playerDamageable != null)
+        {
+            playerDamageable.Damage(strength);
+        }
     }
 
     public override void Die()
     {
-        Debug.Log("Ranged Enemy Dies!");
+        Debug.Log("Melee Enemy Dies!");
+        Destroy(gameObject);
     }
 
     private void Move()
@@ -120,17 +126,12 @@ public class RangedEnemy : BaseEnemy
         float distance = GetDistanceToPlayer();
         Vector2 targetPosition = CanSeePlayer() ? player.transform.position : lastKnownPlayerPosition;
 
-        if(distance <= aggroRange && distance > attackRange)
+        if (distance > attackRange)
         {
             isMoving = true;
             isInAttackRange = false;
         }
-        else if(distance > aggroRange)
-        {
-            isMoving = false;
-            isInAttackRange = false;
-        }
-        else if(distance <= attackRange)
+        else
         {
             isMoving = false;
             isInAttackRange = true;
@@ -138,52 +139,9 @@ public class RangedEnemy : BaseEnemy
 
         if (isMoving)
         {
-            Vector2 moveDirection = GetMoveDirection(targetPosition);
-            transform.position += (Vector3)moveDirection * moveSpeed * Time.deltaTime;
+            Vector2 directDirection = (targetPosition - (Vector2)transform.position).normalized;
+            transform.position += (Vector3)directDirection * moveSpeed * Time.deltaTime;
         }
-    }
-
-    private Vector2 GetMoveDirection(Vector2 targetPosition)
-    {
-        Vector2 directDirection = (targetPosition - (Vector2)transform.position).normalized;
-
-        // Prüfe ob direkte Bewegung möglich ist
-        bool directBlocked = IsDirectionBlocked(directDirection, 0.5f);
-        
-        if (!directBlocked)
-        {
-            return directDirection;
-        }
-
-        // Wenn Wand im Weg, versuche seitliche Bewegung
-        Vector2 rightDirection = new Vector2(-directDirection.y, directDirection.x);
-        Vector2 leftDirection = new Vector2(directDirection.y, -directDirection.x);
-
-        bool rightBlocked = IsDirectionBlocked(rightDirection, 0.5f);
-        bool leftBlocked = IsDirectionBlocked(leftDirection, 0.5f);
-
-        // Wähle die freie Richtung
-        if (!rightBlocked && !leftBlocked)
-        {
-            return Random.value > 0.5f ? rightDirection : leftDirection;
-        }
-        else if (!rightBlocked)
-        {
-            return rightDirection;
-        }
-        else if (!leftBlocked)
-        {
-            return leftDirection;
-        }
-
-        // Beide Seiten blockiert, bewege rückwärts
-        return -directDirection;
-    }
-
-    private bool IsDirectionBlocked(Vector2 direction, float distance)
-    {
-        RaycastHit2D hit = Physics2D.Raycast(transform.position, direction, distance);
-        return hit.collider != null && hit.collider.CompareTag(wallTag) && !hit.collider.isTrigger;
     }
 
     private float GetDistanceToPlayer()
