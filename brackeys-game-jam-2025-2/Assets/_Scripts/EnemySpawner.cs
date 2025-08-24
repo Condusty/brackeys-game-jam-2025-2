@@ -25,13 +25,26 @@ public class EnemySpawner : MonoBehaviour
     
     [Header("Debug")]
     [SerializeField] private bool showGizmos = true;
+    [SerializeField] private bool showEnemyCountDebug = true;
     [SerializeField] private Color triggerRangeColor = Color.yellow;
     [SerializeField] private Color spawnRangeColor = Color.red;
+    
+    // Events
+    public System.Action<EnemySpawner> OnAllEnemiesDead;
     
     private GameObject player;
     private bool hasSpawned = false;
     private bool isSpawning = false;
     private List<GameObject> spawnedEnemies = new List<GameObject>();
+    private bool allEnemiesDeadEventFired = false;
+    private bool isCheckingDeadEnemies = false;
+    private int totalEnemiesSpawned = 0; // Track total enemies spawned in this session
+
+    // Properties for debugging and external access
+    public int AliveEnemyCount => GetAliveEnemyCount();
+    public int TotalSpawnedCount => spawnedEnemies.Count;
+    public int TotalEnemiesSpawned => totalEnemiesSpawned;
+    public bool AllEnemiesDead => AliveEnemyCount == 0 && totalEnemiesSpawned > 0;
 
     private void Start()
     {
@@ -46,6 +59,9 @@ public class EnemySpawner : MonoBehaviour
         {
             Debug.LogWarning($"EnemySpawner on {gameObject.name}: No enemy prefabs assigned!");
         }
+        
+        // Debug: Check if anyone is subscribed to our event
+        Debug.Log($"EnemySpawner ({gameObject.name}): OnAllEnemiesDead subscribers: {(OnAllEnemiesDead?.GetInvocationList()?.Length ?? 0)}");
     }
 
     private void Update()
@@ -62,11 +78,98 @@ public class EnemySpawner : MonoBehaviour
             if (spawnOnlyOnce)
                 hasSpawned = true;
         }
+        
+        // Check if all enemies are dead (but not if already checking)
+        if (!isCheckingDeadEnemies)
+        {
+            CheckAllEnemiesDead();
+        }
+    }
+
+    private void CheckAllEnemiesDead()
+    {
+        if (!allEnemiesDeadEventFired && hasSpawned && !isSpawning)
+        {
+            if (showEnemyCountDebug)
+            {
+                Debug.Log($"EnemySpawner: Checking dead enemies... Alive: {AliveEnemyCount}, Total: {TotalSpawnedCount}, TotalSpawned: {TotalEnemiesSpawned}");
+            }
+            
+            // Start coroutine to check after frame delay
+            StartCoroutine(CheckAllEnemiesDeadDelayed());
+        }
+    }
+
+    private IEnumerator CheckAllEnemiesDeadDelayed()
+    {
+        isCheckingDeadEnemies = true;
+        
+        // Wait one frame for Destroy() to take effect
+        yield return new WaitForEndOfFrame();
+        
+        CleanUpDeadEnemies();
+        
+        if (showEnemyCountDebug)
+        {
+            Debug.Log($"EnemySpawner: After cleanup - Alive: {AliveEnemyCount}, Total: {TotalSpawnedCount}, TotalSpawned: {TotalEnemiesSpawned}, AllDead: {AllEnemiesDead}");
+        }
+        
+        if (AllEnemiesDead)
+        {
+            allEnemiesDeadEventFired = true;
+            
+            if (showEnemyCountDebug)
+            {
+                Debug.Log($"EnemySpawner ({gameObject.name}): All enemies are dead! Firing OnAllEnemiesDead event.");
+                Debug.Log($"Event subscribers: {(OnAllEnemiesDead?.GetInvocationList()?.Length ?? 0)}");
+            }
+            
+            if (OnAllEnemiesDead != null)
+            {
+                Debug.Log($"EnemySpawner: Invoking OnAllEnemiesDead event...");
+                OnAllEnemiesDead.Invoke(this);
+                Debug.Log($"EnemySpawner: Event invoked successfully!");
+            }
+            else
+            {
+                Debug.LogWarning($"EnemySpawner: OnAllEnemiesDead event is null! No subscribers!");
+            }
+        }
+        
+        isCheckingDeadEnemies = false;
+    }
+
+    private void CleanUpDeadEnemies()
+    {
+        int beforeCount = spawnedEnemies.Count;
+        
+        // Remove null references (destroyed enemies)
+        spawnedEnemies.RemoveAll(enemy => enemy == null);
+        
+        int afterCount = spawnedEnemies.Count;
+        int removedCount = beforeCount - afterCount;
+        
+        if (showEnemyCountDebug && removedCount > 0)
+        {
+            Debug.Log($"EnemySpawner: Cleaned up {removedCount} dead enemies. Remaining: {afterCount}");
+        }
+    }
+
+    private int GetAliveEnemyCount()
+    {
+        int aliveCount = 0;
+        foreach (GameObject enemy in spawnedEnemies)
+        {
+            if (enemy != null)
+                aliveCount++;
+        }
+        return aliveCount;
     }
 
     private IEnumerator SpawnEnemiesWithDelay()
     {
         isSpawning = true;
+        allEnemiesDeadEventFired = false; // Reset event flag when spawning new enemies
         
         if (enemyPrefabs.Count == 0)
         {
@@ -82,8 +185,12 @@ public class EnemySpawner : MonoBehaviour
             
             GameObject spawnedEnemy = Instantiate(enemyToSpawn, spawnPosition, Quaternion.identity);
             spawnedEnemies.Add(spawnedEnemy);
+            totalEnemiesSpawned++; // Increment total counter
             
-            Debug.Log($"EnemySpawner: Spawned {enemyToSpawn.name} at {spawnPosition} (Enemy {i + 1}/{enemyCount})");
+            if (showEnemyCountDebug)
+            {
+                Debug.Log($"EnemySpawner: Spawned {enemyToSpawn.name} at {spawnPosition} (Enemy {i + 1}/{enemyCount})");
+            }
             
             // Wait before spawning next enemy (except for the last one)
             if (i < enemyCount - 1)
@@ -94,7 +201,11 @@ public class EnemySpawner : MonoBehaviour
         }
         
         isSpawning = false;
-        Debug.Log($"EnemySpawner: Finished spawning all {enemyCount} enemies.");
+        
+        if (showEnemyCountDebug)
+        {
+            Debug.Log($"EnemySpawner: Finished spawning all {enemyCount} enemies. Total alive: {AliveEnemyCount}, Total spawned this session: {TotalEnemiesSpawned}");
+        }
     }
 
     private float GetSpawnDelay()
@@ -107,12 +218,6 @@ public class EnemySpawner : MonoBehaviour
         {
             return spawnDelay;
         }
-    }
-
-    private void SpawnEnemies()
-    {
-        // Legacy method for immediate spawning - kept for compatibility
-        StartCoroutine(SpawnEnemiesWithDelay());
     }
 
     private GameObject GetRandomEnemyPrefab()
@@ -156,6 +261,8 @@ public class EnemySpawner : MonoBehaviour
             return;
         }
 
+        allEnemiesDeadEventFired = false; // Reset event flag
+
         for (int i = 0; i < enemyCount; i++)
         {
             GameObject enemyToSpawn = GetRandomEnemyPrefab();
@@ -163,14 +270,23 @@ public class EnemySpawner : MonoBehaviour
             
             GameObject spawnedEnemy = Instantiate(enemyToSpawn, spawnPosition, Quaternion.identity);
             spawnedEnemies.Add(spawnedEnemy);
+            totalEnemiesSpawned++; // Increment total counter
         }
         hasSpawned = true;
+        
+        if (showEnemyCountDebug)
+        {
+            Debug.Log($"EnemySpawner: Force spawned {enemyCount} enemies immediately. Total alive: {AliveEnemyCount}, Total spawned this session: {TotalEnemiesSpawned}");
+        }
     }
 
     public void ResetSpawner()
     {
         hasSpawned = false;
         isSpawning = false;
+        allEnemiesDeadEventFired = false;
+        isCheckingDeadEnemies = false;
+        totalEnemiesSpawned = 0; // Reset total counter
         StopAllCoroutines();
         
         // Optionally destroy previously spawned enemies
@@ -180,6 +296,11 @@ public class EnemySpawner : MonoBehaviour
                 Destroy(enemy);
         }
         spawnedEnemies.Clear();
+        
+        if (showEnemyCountDebug)
+        {
+            Debug.Log($"EnemySpawner: Spawner reset. All enemies destroyed.");
+        }
     }
 
     public void AddEnemyPrefab(GameObject enemyPrefab)
@@ -193,6 +314,48 @@ public class EnemySpawner : MonoBehaviour
     public void RemoveEnemyPrefab(GameObject enemyPrefab)
     {
         enemyPrefabs.Remove(enemyPrefab);
+    }
+
+    // Debug methods
+    [ContextMenu("Debug: Show Enemy Status")]
+    public void DebugShowEnemyStatus()
+    {
+        CleanUpDeadEnemies();
+        Debug.Log($"EnemySpawner ({gameObject.name}) Status:\n" +
+                  $"- Current List Count: {TotalSpawnedCount}\n" +
+                  $"- Total Spawned This Session: {TotalEnemiesSpawned}\n" +
+                  $"- Alive Count: {AliveEnemyCount}\n" +
+                  $"- All Enemies Dead: {AllEnemiesDead}\n" +
+                  $"- Has Spawned: {hasSpawned}\n" +
+                  $"- Is Spawning: {isSpawning}\n" +
+                  $"- Event Fired: {allEnemiesDeadEventFired}\n" +
+                  $"- Is Checking: {isCheckingDeadEnemies}\n" +
+                  $"- Event Subscribers: {(OnAllEnemiesDead?.GetInvocationList()?.Length ?? 0)}");
+    }
+
+    [ContextMenu("Debug: Force Check All Dead")]
+    public void DebugForceCheckAllDead()
+    {
+        if (!isCheckingDeadEnemies)
+        {
+            Debug.Log("Manually forcing dead check...");
+            StartCoroutine(CheckAllEnemiesDeadDelayed());
+        }
+    }
+
+    [ContextMenu("Debug: Test Event")]
+    public void DebugTestEvent()
+    {
+        Debug.Log("Testing OnAllEnemiesDead event manually...");
+        if (OnAllEnemiesDead != null)
+        {
+            Debug.Log($"Invoking event with {OnAllEnemiesDead.GetInvocationList().Length} subscribers");
+            OnAllEnemiesDead.Invoke(this);
+        }
+        else
+        {
+            Debug.LogError("OnAllEnemiesDead is null!");
+        }
     }
 
     // Gizmos for visual feedback in editor
@@ -234,6 +397,10 @@ public class EnemySpawner : MonoBehaviour
             {
                 Gizmos.color = Color.yellow;
             }
+            else if (AllEnemiesDead && hasSpawned)
+            {
+                Gizmos.color = Color.magenta; // All enemies dead
+            }
             else if (hasSpawned)
             {
                 Gizmos.color = Color.green;
@@ -260,6 +427,20 @@ public class EnemySpawner : MonoBehaviour
         {
             Gizmos.color = new Color(1f, 0f, 0f, 0.1f);
             Gizmos.DrawSphere(transform.position, spawnRange);
+        }
+
+        // Show debug info when selected
+        if (Application.isPlaying && showEnemyCountDebug)
+        {
+            // Draw lines to alive enemies
+            Gizmos.color = Color.green;
+            foreach (GameObject enemy in spawnedEnemies)
+            {
+                if (enemy != null)
+                {
+                    Gizmos.DrawLine(transform.position, enemy.transform.position);
+                }
+            }
         }
     }
 }
