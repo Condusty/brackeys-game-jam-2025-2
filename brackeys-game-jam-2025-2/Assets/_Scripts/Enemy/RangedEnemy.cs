@@ -4,63 +4,28 @@ public class RangedEnemy : BaseEnemy
 {
     [SerializeField] private GameObject projectilePrefab;
 
-    protected override void InitializeCustomStats()
-    {
-        AddStat("CanAvoidWalls", 1f);
-    }
-
     protected override float GetAttackCooldown()
     {
         return 2f;
     }
 
-    protected override Vector2 GetMoveDirection(Vector2 targetPosition)
+    // Override movement state to consider line of sight for ranged attacks
+    protected override void UpdateMovementState(float distance)
     {
-        if (GetStat("CanAvoidWalls") > 0)
-        {
-            return GetMoveDirectionWithWallAvoidance(targetPosition);
-        }
+        float attackRange = GetStat("AttackRange");
+        bool hasLineOfSight = CanSeePlayer();
         
-        return base.GetMoveDirection(targetPosition);
-    }
-
-    private Vector2 GetMoveDirectionWithWallAvoidance(Vector2 targetPosition)
-    {
-        Vector2 directDirection = (targetPosition - (Vector2)transform.position).normalized;
-
-        bool directBlocked = IsDirectionBlocked(directDirection, 0.5f);
-        
-        if (!directBlocked)
+        // Ranged enemies need both range AND line of sight to stop moving
+        if (distance > attackRange || !hasLineOfSight)
         {
-            return directDirection;
+            isMoving = true;
+            isInAttackRange = false;
         }
-
-        Vector2 rightDirection = new Vector2(-directDirection.y, directDirection.x);
-        Vector2 leftDirection = new Vector2(directDirection.y, -directDirection.x);
-
-        bool rightBlocked = IsDirectionBlocked(rightDirection, 0.5f);
-        bool leftBlocked = IsDirectionBlocked(leftDirection, 0.5f);
-
-        if (!rightBlocked && !leftBlocked)
+        else
         {
-            return Random.value > 0.5f ? rightDirection : leftDirection;
+            isMoving = false;
+            isInAttackRange = true;
         }
-        else if (!rightBlocked)
-        {
-            return rightDirection;
-        }
-        else if (!leftBlocked)
-        {
-            return leftDirection;
-        }
-
-        return -directDirection;
-    }
-
-    private bool IsDirectionBlocked(Vector2 direction, float distance)
-    {
-        RaycastHit2D hit = Physics2D.Raycast(transform.position, direction, distance);
-        return hit.collider != null && hit.collider.CompareTag(wallTag) && !hit.collider.isTrigger;
     }
 
     public override void Attack()
