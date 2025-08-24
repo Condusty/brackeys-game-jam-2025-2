@@ -1,153 +1,33 @@
-using Unity.VisualScripting;
 using UnityEngine;
 
 public class RangedEnemy : BaseEnemy
 {
-    [SerializeField] GameObject projectilePrefab;
-    [SerializeField] private float aggroLossTime = 5f; // Zeit bis Aggro verloren geht
-    [SerializeField] private string wallTag = "Obstacle"; // Tag für Wände
+    [SerializeField] private GameObject projectilePrefab;
 
-    private bool isMoving = false;
-    private bool isInAttackRange = false;
-    private bool isAggro = false;
-    private float attackCd = 2;
-    private float aggroTimer = 0f;
-    private Vector2 lastKnownPlayerPosition;
-
-    private void Update()
+    protected override void InitializeCustomStats()
     {
-        UpdateAggro();
-        Move();
-        CheckAttackCd();
+        AddStat("CanAvoidWalls", 1f);
     }
 
-    private void UpdateAggro()
+    protected override float GetAttackCooldown()
     {
-        float distance = GetDistanceToPlayer();
-        bool canSeePlayer = CanSeePlayer();
-
-        // Aggro aktivieren wenn Spieler in Range und sichtbar
-        if (distance <= aggroRange && canSeePlayer)
-        {
-            isAggro = true;
-            aggroTimer = aggroLossTime;
-            lastKnownPlayerPosition = player.transform.position;
-        }
-
-        // Aggro Timer verringern wenn Spieler nicht sichtbar
-        if (isAggro && !canSeePlayer)
-        {
-            aggroTimer -= Time.deltaTime;
-            if (aggroTimer <= 0)
-            {
-                isAggro = false;
-            }
-        }
-
-        // Aggro Timer aktualisieren wenn Spieler sichtbar
-        if (isAggro && canSeePlayer)
-        {
-            aggroTimer = aggroLossTime;
-            lastKnownPlayerPosition = player.transform.position;
-        }
+        return 2f;
     }
 
-    private bool CanSeePlayer()
+    protected override Vector2 GetMoveDirection(Vector2 targetPosition)
     {
-        Vector2 directionToPlayer = (player.transform.position - transform.position).normalized;
-        float distanceToPlayer = Vector2.Distance(transform.position, player.transform.position);
-
-        // Verwende RaycastAll um alle Collider zu prüfen
-        RaycastHit2D[] hits = Physics2D.RaycastAll(transform.position, directionToPlayer, distanceToPlayer);
-        
-        foreach (RaycastHit2D hit in hits)
+        if (GetStat("CanAvoidWalls") > 0)
         {
-            // Ignoriere den Enemy selbst
-            if (hit.collider.gameObject == gameObject)
-                continue;
-            
-            // Ignoriere Trigger-Collider
-            if (hit.collider.isTrigger)
-                continue;
-            
-            // Wenn es ein Obstacle ist, blockiert es die Sicht
-            if (hit.collider.CompareTag(wallTag))
-            {
-                return false;
-            }
-            
-            // Wenn wir den Spieler erreichen, ohne eine Wand zu treffen
-            if (hit.collider.CompareTag("Player"))
-            {
-                return true;
-            }
+            return GetMoveDirectionWithWallAvoidance(targetPosition);
         }
         
-        // Fallback: Wenn kein Player-Hit gefunden wurde
-        return false;
+        return base.GetMoveDirection(targetPosition);
     }
 
-    private void CheckAttackCd()
-    {
-        attackCd -= Time.deltaTime;
-        if(attackCd <= 0 && isInAttackRange && CanSeePlayer())
-        {
-            Attack();
-            attackCd = 2;
-        }
-    }
-
-    public override void Attack()
-    {
-        Instantiate(projectilePrefab, transform.position, Quaternion.identity);
-        Debug.Log("Ranged Enemy Attacks!");
-    }
-
-    public override void Die()
-    {
-        Debug.Log("Ranged Enemy Dies!");
-    }
-
-    private void Move()
-    {
-        if (!isAggro)
-        {
-            isMoving = false;
-            isInAttackRange = false;
-            return;
-        }
-
-        float distance = GetDistanceToPlayer();
-        Vector2 targetPosition = CanSeePlayer() ? player.transform.position : lastKnownPlayerPosition;
-
-        if(distance <= aggroRange && distance > attackRange)
-        {
-            isMoving = true;
-            isInAttackRange = false;
-        }
-        else if(distance > aggroRange)
-        {
-            isMoving = false;
-            isInAttackRange = false;
-        }
-        else if(distance <= attackRange)
-        {
-            isMoving = false;
-            isInAttackRange = true;
-        }
-
-        if (isMoving)
-        {
-            Vector2 moveDirection = GetMoveDirection(targetPosition);
-            transform.position += (Vector3)moveDirection * moveSpeed * Time.deltaTime;
-        }
-    }
-
-    private Vector2 GetMoveDirection(Vector2 targetPosition)
+    private Vector2 GetMoveDirectionWithWallAvoidance(Vector2 targetPosition)
     {
         Vector2 directDirection = (targetPosition - (Vector2)transform.position).normalized;
 
-        // Prüfe ob direkte Bewegung möglich ist
         bool directBlocked = IsDirectionBlocked(directDirection, 0.5f);
         
         if (!directBlocked)
@@ -155,14 +35,12 @@ public class RangedEnemy : BaseEnemy
             return directDirection;
         }
 
-        // Wenn Wand im Weg, versuche seitliche Bewegung
         Vector2 rightDirection = new Vector2(-directDirection.y, directDirection.x);
         Vector2 leftDirection = new Vector2(directDirection.y, -directDirection.x);
 
         bool rightBlocked = IsDirectionBlocked(rightDirection, 0.5f);
         bool leftBlocked = IsDirectionBlocked(leftDirection, 0.5f);
 
-        // Wähle die freie Richtung
         if (!rightBlocked && !leftBlocked)
         {
             return Random.value > 0.5f ? rightDirection : leftDirection;
@@ -176,7 +54,6 @@ public class RangedEnemy : BaseEnemy
             return leftDirection;
         }
 
-        // Beide Seiten blockiert, bewege rückwärts
         return -directDirection;
     }
 
@@ -186,30 +63,18 @@ public class RangedEnemy : BaseEnemy
         return hit.collider != null && hit.collider.CompareTag(wallTag) && !hit.collider.isTrigger;
     }
 
-    private float GetDistanceToPlayer()
+    public override void Attack()
     {
-        return Vector2.Distance(transform.position, player.transform.position);
+        if (projectilePrefab != null)
+        {
+            Instantiate(projectilePrefab, transform.position, Quaternion.identity);
+        }
+        Debug.Log("Ranged Enemy Attacks!");
     }
 
-    private void OnDrawGizmos()
+    public override void Die()
     {
-        Gizmos.color = Color.red;
-        Gizmos.DrawWireSphere(transform.position, aggroRange);
-        Gizmos.color = Color.blue;
-        Gizmos.DrawWireSphere(transform.position, attackRange);
-
-        // Zeige Sichtlinie an
-        if (player != null)
-        {
-            Gizmos.color = CanSeePlayer() ? Color.green : Color.red;
-            Gizmos.DrawLine(transform.position, player.transform.position);
-        }
-
-        // Zeige Aggro-Status
-        if (isAggro)
-        {
-            Gizmos.color = Color.yellow;
-            Gizmos.DrawWireCube(transform.position, Vector3.one * 0.3f);
-        }
+        Debug.Log("Ranged Enemy Dies!");
+        Destroy(gameObject);
     }
 }
